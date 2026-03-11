@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+   <meta charset="UTF-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+   <title>命名練習：蔬菜</title>
+   <style>
+       body{
+           font-family:Arial,sans-serif;
+           display:flex;
+           flex-direction:column;
+           align-items:center;
+           justify-content:space-between;
+           min-height:100vh;
+           margin:0;
+           background:#f4f4f9;
+       }
+       .container{
+           width:90%;
+           max-width:800px;
+           text-align:center;
+           padding:20px;
+           display:flex;
+           flex-direction:column;
+           align-items:center;
+           flex-grow:1;
+       }
+       h1{color:#333;margin-bottom:20px}
+       #item-image{
+           max-width:90%;
+           height:auto;
+           max-height:58vh;
+           border:5px solid #fff;
+           box-shadow:0 4px 15px rgba(0,0,0,.1);
+           border-radius:12px;
+           margin:15px auto;
+           display:block;
+        }
+       /* 答案文字 */
+       #message{
+           font-size:2.4em;
+           color:#333;
+           min-height:90px;
+           margin:20px 0;
+           font-weight:bold;
+       }
+       /* 提示鍵：放在圖片下方，與圖片距離適中 */
+       #cue-button{
+           background:#007bff;
+           color:#fff;
+           padding:14px 40px;
+           font-size:1.5em;
+           border:none;
+           border-radius:10px;
+           cursor:pointer;
+           margin-top:18px;     /* 與圖片之間距離 */
+           margin-bottom:25px;
+       }
+       #cue-button:hover{background:#0056b3}
+       #start-button{
+           background:#28a745;
+           color:#fff;
+           padding:16px 44px;
+           font-size:1.7em;
+           border:none;
+           border-radius:10px;
+           cursor:pointer;
+       }
+       #start-button:hover{background:#1e7e34}
+       .progress-bar-container{
+           width:100%;
+           max-width:800px;
+           margin-top:auto;
+           padding:10px;
+           background:#e9ecef;
+           border-top:1px solid #ddd;
+       }
+       #progress-bar{
+           height:38px;
+           background:#ffc107;
+           border-radius:6px;
+           transition:width .5s;
+           display:flex;
+           align-items:center;
+           justify-content:center;
+           color:#333;
+           font-weight:bold;
+           font-size:1.3em;
+       }
+   </style>
+</head>
+<body>
+   <div class="container">
+       <h1>命名練習：蔬菜</h1>
+       
+       <img id="item-image" src="" alt="目標物品圖片" style="display:none">
+ 
+       <button id="cue-button" style="display:none">提示</button>
+ 
+       <div id="message"></div>
+ 
+       <button id="start-button">開始練習</button>
+   </div>
+ 
+   <div class="progress-bar-container"><div id="progress-bar"></div></div>
+ 
+   <script>
+       const questions = [
+           {word:"菜心",image:"菜心.jpg",semantic_cue:"佢係綠色嘅長條形蔬菜，有黃色嘅細花，白灼或者炒都得。",phonemic_cue:"菜",foil_word:"生菜",correct_aliases:["菜心"]},
+           {word:"番茄",image:"番茄.jpg",semantic_cue:"佢係紅色、圓碌碌嘅，可以煮蛋，亦可以生食整沙律。",phonemic_cue:"番",foil_word:"洋蔥",correct_aliases:["番茄","大番茄"]},
+           {word:"西蘭花",image:"西蘭花.jpg",semantic_cue:"佢好似一棵綠色嘅小樹咁，個頭密麻麻，好有營養。",phonemic_cue:"西",foil_word:"椰菜花",correct_aliases:["西蘭花"]},
+           {word:"青瓜",image:"青瓜.jpg",semantic_cue:"佢係長條形、綠色皮，食落去好脆，夏天食好清涼。",phonemic_cue:"青",foil_word:"茄子",correct_aliases:["青瓜","胡瓜"]},
+           {word:"薯仔",image:"薯仔.jpg",semantic_cue:"佢係啡色皮，生喺泥入面，可以煮咖哩或者炸薯條。",phonemic_cue:"薯",foil_word:"番薯",correct_aliases:["薯仔","馬鈴薯"]},
+           {word:"紅蘿蔔",image:"紅蘿蔔.jpg",semantic_cue:"佢係橙色長條形，兔仔最鍾意食，通常用嚟煲湯。",phonemic_cue:"紅",foil_word:"白蘿蔔",correct_aliases:["紅蘿蔔","胡蘿蔔"]}
+       ];
+ 
+       let currentQuestionIndex=0, currentCueLevel=0, recognitionActive=false, timer, correctAnswered=false;
+       const imageElement=document.getElementById('item-image');
+       const messageElement=document.getElementById('message');
+       const progressBarElement=document.getElementById('progress-bar');
+       const cueButton=document.getElementById('cue-button');
+       const startButton=document.getElementById('start-button');
+       const synth=window.speechSynthesis;
+       let recognition=null;
+ 
+       function createRecognition(){
+           if(recognition) return;
+           if(!('SpeechRecognition'in window||'webkitSpeechRecognition'in window)){
+               messageElement.textContent="瀏覽器唔支援語音辨識"; startButton.disabled=true; return;
+           }
+           recognition=new (window.SpeechRecognition||window.webkitSpeechRecognition)();
+           recognition.lang='zh-HK'; recognition.interimResults=false;
+           recognition.onresult=e=>{clearTimeout(timer);recognitionActive=false;checkAnswer(e.results[0][0].transcript.trim());};
+           recognition.onerror=()=>{recognitionActive=false;if(!correctAnswered&&currentCueLevel<4)startNextCueTimer();};
+           recognition.onend=()=>recognitionActive=false;
+       }
+ 
+       function speak(text,callback){
+           if(!synth){if(callback)callback();return;}
+           if(currentCueLevel===2){
+                const ch=questions[currentQuestionIndex].phonemic_cue;
+                const a=new SpeechSynthesisUtterance("呢個係……");a.lang='zh-HK';a.rate=0.9;
+                const b=new SpeechSynthesisUtterance(ch);b.lang='zh-HK';b.rate=0.25;
+               a.onend=()=>{synth.speak(b);b.onend=callback||(()=>{});};
+                synth.speak(a); return;
+           }
+           if(text.includes("你試下講一次")){
+                const w=questions[currentQuestionIndex].word;
+                const p1=`呢個係${w}，你試下講一次，`;
+                const u1=new SpeechSynthesisUtterance(p1);u1.lang='zh-HK';u1.rate=0.9;
+                const u2=new SpeechSynthesisUtterance(w);u2.lang='zh-HK';u2.rate=0.4;
+                const u3=new SpeechSynthesisUtterance("。");u3.lang='zh-HK';u3.rate=0.9;
+               u1.onend=()=>{synth.speak(u2);u2.onend=()=>{synth.speak(u3);u3.onend=callback||(()=>{});};};
+                synth.speak(u1); return;
+           }
+           const utt=new SpeechSynthesisUtterance(text);utt.lang='zh-HK';utt.rate=0.9;
+           if(callback)utt.onend=callback;
+           synth.speak(utt);
+       }
+ 
+       function updateProgress(){
+           const p=(currentQuestionIndex/questions.length)*100;
+           progressBarElement.style.width=p+'%';
+           progressBarElement.textContent=currentQuestionIndex+'/'+questions.length;
+           if(currentQuestionIndex===questions.length) progressBarElement.style.backgroundColor='#28a745';
+       }
+ 
+       function startListening(){
+           if(!recognition||recognitionActive||correctAnswered) return;
+           recognition.start(); recognitionActive=true; startNextCueTimer();
+       }
+ 
+       function startNextCueTimer(){
+           clearTimeout(timer);
+           timer=setTimeout(()=>{ if(correctAnswered)return; recognitionActive=false; setTimeout(moveToNextCue,1000); },10000);
+       }
+ 
+       function checkAnswer(ans){
+           const q=questions[currentQuestionIndex];
+           const correct=q.correct_aliases.some(a=>ans.toLowerCase().includes(a.toLowerCase()));
+           if(correct){
+                correctAnswered=true;
+                clearTimeout(timer); recognition?.stop(); synth.cancel();
+                cueButton.style.display='none';
+                handleCorrectAnswer(q.word);
+           }else{
+                setTimeout(moveToNextCue,1500);
+           }
+       }
+ 
+       function handleCorrectAnswer(w){
+           currentCueLevel=0; correctAnswered=false;
+           messageElement.textContent=w;
+           const fb=["啱喇","冇錯","做得好"][Math.floor(Math.random()*3)]+`！呢個就係${w}`;
+           speak(fb,()=>setTimeout(moveToNextQuestion,800));
+       }
+ 
+       function moveToNextCue(){
+           if(correctAnswered) return;
+           currentCueLevel++;
+           const q=questions[currentQuestionIndex];
+           messageElement.textContent="";
+           if(currentCueLevel===1) speak(`你再諗諗。提示：${q.semantic_cue}`,startListening);
+           else if(currentCueLevel===2) speak("",startListening);
+           else if(currentCueLevel===3){
+                const opts=[q.word,q.foil_word]; opts.sort(()=>Math.random()-0.5);
+                speak(`你估下，呢個係${opts[0]}定${opts[1]}啊？`,startListening);
+           }else{
+                cueButton.style.display='none';
+                handleFinalAnswer(q.word);
+           }
+       }
+ 
+       function handleFinalAnswer(w){
+           clearTimeout(timer); currentCueLevel=0;
+           messageElement.textContent=w;
+           speak(`呢個係${w}，你試下講一次，${w}。`,()=>setTimeout(moveToNextQuestion,3000));
+       }
+ 
+       function moveToNextQuestion(){
+           currentQuestionIndex++; currentCueLevel=0; correctAnswered=false; updateProgress();
+           if(currentQuestionIndex<questions.length) loadQuestion(currentQuestionIndex);
+           else handleCompletion();
+       }
+ 
+       function loadQuestion(i){
+           const q=questions[i];
+           imageElement.src=q.image;
+           imageElement.style.display='block';
+           cueButton.style.display='block';
+           messageElement.textContent="";
+           speak("呢個咩嚟架？",startListening);
+       }
+ 
+       function handleCompletion(){
+           imageElement.style.display='none';
+           cueButton.style.display='none';
+           messageElement.textContent="做得非常好，我哋已經完成呢個練習喇！";
+           speak("做得非常好，我哋已經完成呢個練習喇！");
+           startButton.style.display='block';
+           startButton.textContent='重新開始';
+       }
+ 
+       startButton.onclick=()=>{
+           createRecognition();
+           startButton.style.display='none';
+           currentQuestionIndex=-1;
+           updateProgress();
+           moveToNextQuestion();
+       };
+ 
+       cueButton.onclick=()=>{ 
+           if(correctAnswered) return; 
+           clearTimeout(timer); recognition?.stop(); synth.cancel(); 
+           moveToNextCue(); 
+       };
+ 
+       document.addEventListener('DOMContentLoaded',updateProgress);
+   </script>
+</body>
+</html>

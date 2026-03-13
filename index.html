@@ -115,7 +115,7 @@
        ];
  
        let currentQuestionIndex=0, currentCueLevel=0, recognitionActive=false, timer, correctAnswered=false;
-       let isWaitingForAnswer = false; // 新增：用於標記是否正在等待答案的時間窗
+       let isWaitingForAnswer = false; 
        
        const imageElement=document.getElementById('item-image');
        const messageElement=document.getElementById('message');
@@ -137,26 +137,22 @@
 
            recognition.onresult=e=>{
                clearTimeout(timer);
-               isWaitingForAnswer = false; // 收到結果，停止重啟邏輯
+               isWaitingForAnswer = false; 
                recognitionActive=false;
                checkAnswer(e.results[0][0].transcript.trim());
            };
 
            recognition.onerror=e=>{
                recognitionActive=false;
-               console.log("Recognition error:", e.error);
            };
 
            recognition.onend=()=>{
                recognitionActive=false;
-               // 關鍵：如果 Android 自動停止了錄音，但我們仍在等待時間窗內，就重新啟動它
                if(isWaitingForAnswer && !correctAnswered && currentCueLevel < 4){
                    try {
                        recognition.start();
                        recognitionActive = true;
-                   } catch(err) {
-                       console.log("Auto-restart failed:", err);
-                   }
+                   } catch(err) {}
                }
            };
        }
@@ -193,7 +189,7 @@
  
        function startListening(){
            if(!recognition||correctAnswered) return;
-           isWaitingForAnswer = true; // 開啟重啟邏輯標記
+           isWaitingForAnswer = true; 
            try {
                recognition.start();
                recognitionActive=true;
@@ -203,14 +199,14 @@
  
        function startNextCueTimer(){
            clearTimeout(timer);
-           // 將錄音等待時間從 10 秒延長至 15 秒（可按需改為 20000 即 20 秒）
+           // 修改錄音等待時間為 10 秒
            timer=setTimeout(()=>{ 
                if(correctAnswered) return; 
-               isWaitingForAnswer = false; // 時間到，關閉重啟邏輯
+               isWaitingForAnswer = false; 
                recognition?.stop();
                recognitionActive=false; 
                setTimeout(moveToNextCue,1000); 
-           }, 15000); 
+           }, 10000); 
        }
  
        function checkAnswer(ans){
@@ -225,7 +221,6 @@
                 cueButton.style.display='none';
                 handleCorrectAnswer(q.word);
            }else{
-                // 答錯了，準備進入下一個提示
                 isWaitingForAnswer = false;
                 recognition?.stop();
                 setTimeout(moveToNextCue,1500);
@@ -296,7 +291,7 @@
  
        cueButton.onclick=()=>{ 
            if(correctAnswered) return; 
-           isWaitingForAnswer = false; // 點擊提示時手動關閉當前的重啟邏輯
+           isWaitingForAnswer = false; 
            clearTimeout(timer); 
            recognition?.stop(); 
            synth.cancel(); 

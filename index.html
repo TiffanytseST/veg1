@@ -44,7 +44,7 @@
            margin:20px 0;
            font-weight:bold;
        }
-       /* 提示鍵：放在圖片下方，與圖片距離適中 */
+       /* 提示鍵 */
        #cue-button{
            background:#007bff;
            color:#fff;
@@ -53,7 +53,7 @@
            border:none;
            border-radius:10px;
            cursor:pointer;
-           margin-top:18px;     /* 與圖片之間距離 */
+           margin-top:18px;
            margin-bottom:25px;
        }
        #cue-button:hover{background:#0056b3}
@@ -115,6 +115,8 @@
        ];
  
        let currentQuestionIndex=0, currentCueLevel=0, recognitionActive=false, timer, correctAnswered=false;
+       let isWaitingForAnswer = false; // 新增：用於標記是否正在等待答案的時間窗
+       
        const imageElement=document.getElementById('item-image');
        const messageElement=document.getElementById('message');
        const progressBarElement=document.getElementById('progress-bar');
@@ -129,10 +131,34 @@
                messageElement.textContent="瀏覽器唔支援語音辨識"; startButton.disabled=true; return;
            }
            recognition=new (window.SpeechRecognition||window.webkitSpeechRecognition)();
-           recognition.lang='zh-HK'; recognition.interimResults=false;
-           recognition.onresult=e=>{clearTimeout(timer);recognitionActive=false;checkAnswer(e.results[0][0].transcript.trim());};
-           recognition.onerror=()=>{recognitionActive=false;if(!correctAnswered&&currentCueLevel<4)startNextCueTimer();};
-           recognition.onend=()=>recognitionActive=false;
+           recognition.lang='zh-HK'; 
+           recognition.interimResults=false;
+           recognition.continuous=false;
+
+           recognition.onresult=e=>{
+               clearTimeout(timer);
+               isWaitingForAnswer = false; // 收到結果，停止重啟邏輯
+               recognitionActive=false;
+               checkAnswer(e.results[0][0].transcript.trim());
+           };
+
+           recognition.onerror=e=>{
+               recognitionActive=false;
+               console.log("Recognition error:", e.error);
+           };
+
+           recognition.onend=()=>{
+               recognitionActive=false;
+               // 關鍵：如果 Android 自動停止了錄音，但我們仍在等待時間窗內，就重新啟動它
+               if(isWaitingForAnswer && !correctAnswered && currentCueLevel < 4){
+                   try {
+                       recognition.start();
+                       recognitionActive = true;
+                   } catch(err) {
+                       console.log("Auto-restart failed:", err);
+                   }
+               }
+           };
        }
  
        function speak(text,callback){
@@ -141,7 +167,7 @@
                 const ch=questions[currentQuestionIndex].phonemic_cue;
                 const a=new SpeechSynthesisUtterance("呢個係……");a.lang='zh-HK';a.rate=0.9;
                 const b=new SpeechSynthesisUtterance(ch);b.lang='zh-HK';b.rate=0.25;
-               a.onend=()=>{synth.speak(b);b.onend=callback||(()=>{});};
+                a.onend=()=>{synth.speak(b);b.onend=callback||(()=>{});};
                 synth.speak(a); return;
            }
            if(text.includes("你試下講一次")){
@@ -150,7 +176,7 @@
                 const u1=new SpeechSynthesisUtterance(p1);u1.lang='zh-HK';u1.rate=0.9;
                 const u2=new SpeechSynthesisUtterance(w);u2.lang='zh-HK';u2.rate=0.4;
                 const u3=new SpeechSynthesisUtterance("。");u3.lang='zh-HK';u3.rate=0.9;
-               u1.onend=()=>{synth.speak(u2);u2.onend=()=>{synth.speak(u3);u3.onend=callback||(()=>{});};};
+                u1.onend=()=>{synth.speak(u2);u2.onend=()=>{synth.speak(u3);u3.onend=callback||(()=>{});};};
                 synth.speak(u1); return;
            }
            const utt=new SpeechSynthesisUtterance(text);utt.lang='zh-HK';utt.rate=0.9;
@@ -166,13 +192,25 @@
        }
  
        function startListening(){
-           if(!recognition||recognitionActive||correctAnswered) return;
-           recognition.start(); recognitionActive=true; startNextCueTimer();
+           if(!recognition||correctAnswered) return;
+           isWaitingForAnswer = true; // 開啟重啟邏輯標記
+           try {
+               recognition.start();
+               recognitionActive=true;
+           } catch(e) {}
+           startNextCueTimer();
        }
  
        function startNextCueTimer(){
            clearTimeout(timer);
-           timer=setTimeout(()=>{ if(correctAnswered)return; recognitionActive=false; setTimeout(moveToNextCue,1000); },10000);
+           // 將錄音等待時間從 10 秒延長至 15 秒（可按需改為 20000 即 20 秒）
+           timer=setTimeout(()=>{ 
+               if(correctAnswered) return; 
+               isWaitingForAnswer = false; // 時間到，關閉重啟邏輯
+               recognition?.stop();
+               recognitionActive=false; 
+               setTimeout(moveToNextCue,1000); 
+           }, 15000); 
        }
  
        function checkAnswer(ans){
@@ -180,10 +218,16 @@
            const correct=q.correct_aliases.some(a=>ans.toLowerCase().includes(a.toLowerCase()));
            if(correct){
                 correctAnswered=true;
-                clearTimeout(timer); recognition?.stop(); synth.cancel();
+                isWaitingForAnswer = false;
+                clearTimeout(timer); 
+                recognition?.stop(); 
+                synth.cancel();
                 cueButton.style.display='none';
                 handleCorrectAnswer(q.word);
            }else{
+                // 答錯了，準備進入下一個提示
+                isWaitingForAnswer = false;
+                recognition?.stop();
                 setTimeout(moveToNextCue,1500);
            }
        }
@@ -206,6 +250,7 @@
                 const opts=[q.word,q.foil_word]; opts.sort(()=>Math.random()-0.5);
                 speak(`你估下，呢個係${opts[0]}定${opts[1]}啊？`,startListening);
            }else{
+                isWaitingForAnswer = false;
                 cueButton.style.display='none';
                 handleFinalAnswer(q.word);
            }
@@ -251,7 +296,10 @@
  
        cueButton.onclick=()=>{ 
            if(correctAnswered) return; 
-           clearTimeout(timer); recognition?.stop(); synth.cancel(); 
+           isWaitingForAnswer = false; // 點擊提示時手動關閉當前的重啟邏輯
+           clearTimeout(timer); 
+           recognition?.stop(); 
+           synth.cancel(); 
            moveToNextCue(); 
        };
  

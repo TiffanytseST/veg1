@@ -36,7 +36,6 @@
            margin:15px auto;
            display:block;
         }
-       /* 答案文字 */
        #message{
            font-size:2.4em;
            color:#333;
@@ -44,7 +43,6 @@
            margin:20px 0;
            font-weight:bold;
        }
-       /* 提示鍵 */
        #cue-button{
            background:#007bff;
            color:#fff;
@@ -92,18 +90,13 @@
 <body>
    <div class="container">
        <h1>命名練習：蔬菜</h1>
-       
        <img id="item-image" src="" alt="目標物品圖片" style="display:none">
- 
        <button id="cue-button" style="display:none">提示</button>
- 
        <div id="message"></div>
- 
        <button id="start-button">開始練習</button>
    </div>
- 
    <div class="progress-bar-container"><div id="progress-bar"></div></div>
- 
+
    <script>
        const questions = [
            {word:"菜心",image:"菜心.jpg",semantic_cue:"佢係綠色嘅長條形蔬菜，有黃色嘅細花，白灼或者炒都得。",phonemic_cue:"菜",foil_word:"生菜",correct_aliases:["菜心"]},
@@ -113,7 +106,7 @@
            {word:"薯仔",image:"薯仔.jpg",semantic_cue:"佢係啡色皮，生喺泥入面，可以煮咖哩或者炸薯條。",phonemic_cue:"薯",foil_word:"番薯",correct_aliases:["薯仔","馬鈴薯"]},
            {word:"紅蘿蔔",image:"紅蘿蔔.jpg",semantic_cue:"佢係橙色長條形，兔仔最鍾意食，通常用嚟煲湯。",phonemic_cue:"紅",foil_word:"白蘿蔔",correct_aliases:["紅蘿蔔","胡蘿蔔"]}
        ];
- 
+
        let currentQuestionIndex=0, currentCueLevel=0, recognitionActive=false, timer, correctAnswered=false;
        let isWaitingForAnswer = false; 
        
@@ -124,7 +117,7 @@
        const startButton=document.getElementById('start-button');
        const synth=window.speechSynthesis;
        let recognition=null;
- 
+
        function createRecognition(){
            if(recognition) return;
            if(!('SpeechRecognition'in window||'webkitSpeechRecognition'in window)){
@@ -136,8 +129,8 @@
            recognition.continuous=false;
 
            recognition.onresult=e=>{
-               clearTimeout(timer);
                isWaitingForAnswer = false; 
+               clearTimeout(timer); // 收到結果立刻清除計時器
                recognitionActive=false;
                checkAnswer(e.results[0][0].transcript.trim());
            };
@@ -156,7 +149,7 @@
                }
            };
        }
- 
+
        function speak(text,callback){
            if(!synth){if(callback)callback();return;}
            if(currentCueLevel===2){
@@ -179,14 +172,14 @@
            if(callback)utt.onend=callback;
            synth.speak(utt);
        }
- 
+
        function updateProgress(){
            const p=(currentQuestionIndex/questions.length)*100;
            progressBarElement.style.width=p+'%';
            progressBarElement.textContent=currentQuestionIndex+'/'+questions.length;
            if(currentQuestionIndex===questions.length) progressBarElement.style.backgroundColor='#28a745';
        }
- 
+
        function startListening(){
            if(!recognition||correctAnswered) return;
            isWaitingForAnswer = true; 
@@ -196,45 +189,49 @@
            } catch(e) {}
            startNextCueTimer();
        }
- 
+
        function startNextCueTimer(){
-           clearTimeout(timer);
-           // 修改錄音等待時間為 10 秒
+           clearTimeout(timer); // 啟動新計時器前先確保舊的已清除
            timer=setTimeout(()=>{ 
-               if(correctAnswered) return; 
+               if(correctAnswered || !isWaitingForAnswer) return; 
                isWaitingForAnswer = false; 
                recognition?.stop();
                recognitionActive=false; 
                setTimeout(moveToNextCue,1000); 
            }, 10000); 
        }
- 
+
        function checkAnswer(ans){
            const q=questions[currentQuestionIndex];
            const correct=q.correct_aliases.some(a=>ans.toLowerCase().includes(a.toLowerCase()));
+           
+           isWaitingForAnswer = false; // 無論對錯，先停止當前錄音循環
+           clearTimeout(timer); // 徹底清除計時器
+
            if(correct){
                 correctAnswered=true;
-                isWaitingForAnswer = false;
-                clearTimeout(timer); 
                 recognition?.stop(); 
                 synth.cancel();
                 cueButton.style.display='none';
                 handleCorrectAnswer(q.word);
            }else{
-                isWaitingForAnswer = false;
                 recognition?.stop();
                 setTimeout(moveToNextCue,1500);
            }
        }
- 
+
        function handleCorrectAnswer(w){
            currentCueLevel=0; correctAnswered=false;
            messageElement.textContent=w;
            const fb=["啱喇","冇錯","做得好"][Math.floor(Math.random()*3)]+`！呢個就係${w}`;
            speak(fb,()=>setTimeout(moveToNextQuestion,800));
        }
- 
+
        function moveToNextCue(){
+           // 進入新提示前，確保一切計時與標記重置
+           clearTimeout(timer);
+           isWaitingForAnswer = false;
+
            if(correctAnswered) return;
            currentCueLevel++;
            const q=questions[currentQuestionIndex];
@@ -245,24 +242,27 @@
                 const opts=[q.word,q.foil_word]; opts.sort(()=>Math.random()-0.5);
                 speak(`你估下，呢個係${opts[0]}定${opts[1]}啊？`,startListening);
            }else{
-                isWaitingForAnswer = false;
                 cueButton.style.display='none';
                 handleFinalAnswer(q.word);
            }
        }
- 
+
        function handleFinalAnswer(w){
-           clearTimeout(timer); currentCueLevel=0;
+           clearTimeout(timer); 
+           isWaitingForAnswer = false;
+           currentCueLevel=0;
            messageElement.textContent=w;
            speak(`呢個係${w}，你試下講一次，${w}。`,()=>setTimeout(moveToNextQuestion,3000));
        }
- 
+
        function moveToNextQuestion(){
+           clearTimeout(timer);
+           isWaitingForAnswer = false;
            currentQuestionIndex++; currentCueLevel=0; correctAnswered=false; updateProgress();
            if(currentQuestionIndex<questions.length) loadQuestion(currentQuestionIndex);
            else handleCompletion();
        }
- 
+
        function loadQuestion(i){
            const q=questions[i];
            imageElement.src=q.image;
@@ -271,7 +271,7 @@
            messageElement.textContent="";
            speak("呢個咩嚟架？",startListening);
        }
- 
+
        function handleCompletion(){
            imageElement.style.display='none';
            cueButton.style.display='none';
@@ -280,7 +280,7 @@
            startButton.style.display='block';
            startButton.textContent='重新開始';
        }
- 
+
        startButton.onclick=()=>{
            createRecognition();
            startButton.style.display='none';
@@ -288,16 +288,17 @@
            updateProgress();
            moveToNextQuestion();
        };
- 
+
        cueButton.onclick=()=>{ 
            if(correctAnswered) return; 
+           // 【核心修改】點擊提示時立刻切斷一切錄音與計時
            isWaitingForAnswer = false; 
            clearTimeout(timer); 
            recognition?.stop(); 
            synth.cancel(); 
            moveToNextCue(); 
        };
- 
+
        document.addEventListener('DOMContentLoaded',updateProgress);
    </script>
 </body>
